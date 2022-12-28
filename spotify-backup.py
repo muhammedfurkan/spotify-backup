@@ -27,20 +27,20 @@ class SpotifyAPI:
 	def get(self, url, params={}, tries=3):
 		# Construct the correct URL.
 		if not url.startswith('https://api.spotify.com/v1/'):
-			url = 'https://api.spotify.com/v1/' + url
+			url = f'https://api.spotify.com/v1/{url}'
 		if params:
 			url += ('&' if '?' in url else '?') + urllib.parse.urlencode(params)
-	
+
 		# Try the sending off the request a specified number of times before giving up.
 		for _ in range(tries):
 			try:
 				req = urllib.request.Request(url)
-				req.add_header('Authorization', 'Bearer ' + self._auth)
+				req.add_header('Authorization', f'Bearer {self._auth}')
 				res = urllib.request.urlopen(req)
 				reader = codecs.getreader('utf-8')
 				return json.load(reader(res))
 			except Exception as err:
-				logging.info('Couldn\'t load URL: {} ({})'.format(url, err))
+				logging.info(f"Couldn\'t load URL: {url} ({err})")
 				time.sleep(2)
 				logging.info('Trying again...')
 		sys.exit(1)
@@ -64,15 +64,17 @@ class SpotifyAPI:
 	# Pops open a browser window for a user to log in and authorize API access.
 	@staticmethod
 	def authorize(client_id, scope):
-		url = 'https://accounts.spotify.com/authorize?' + urllib.parse.urlencode({
-			'response_type': 'token',
-			'client_id': client_id,
-			'scope': scope,
-			'redirect_uri': 'http://127.0.0.1:{}/redirect'.format(SpotifyAPI._SERVER_PORT)
-		})
+		url = 'https://accounts.spotify.com/authorize?' + urllib.parse.urlencode(
+			{
+				'response_type': 'token',
+				'client_id': client_id,
+				'scope': scope,
+				'redirect_uri': f'http://127.0.0.1:{SpotifyAPI._SERVER_PORT}/redirect',
+			}
+		)
 		logging.info(f'Logging in (click if it doesn\'t open automatically): {url}')
 		webbrowser.open(url)
-	
+
 		# Start a simple, local HTTP server to listen for the authorization token... (i.e. a hack).
 		server = SpotifyAPI._AuthorizationServer('127.0.0.1', SpotifyAPI._SERVER_PORT)
 		try:
@@ -102,18 +104,17 @@ class SpotifyAPI:
 				self.send_header('Content-Type', 'text/html')
 				self.end_headers()
 				self.wfile.write(b'<script>location.replace("token?" + location.hash.slice(1));</script>')
-			
-			# Read access_token and use an exception to kill the server listening...
+
 			elif self.path.startswith('/token?'):
 				self.send_response(200)
 				self.send_header('Content-Type', 'text/html')
 				self.end_headers()
 				self.wfile.write(b'<script>close()</script>Thanks! You may now close this window.')
 
-				access_token = re.search('access_token=([^&]*)', self.path).group(1)
+				access_token = re.search('access_token=([^&]*)', self.path)[1]
 				logging.info(f'Received access token from Spotify: {access_token}')
 				raise SpotifyAPI._Authorization(access_token)
-			
+
 			else:
 				self.send_error(404)
 		
@@ -138,19 +139,19 @@ def main():
 	parser.add_argument('--format', default='txt', choices=['json', 'txt'], help='output format (default: txt)')
 	parser.add_argument('file', help='output filename', nargs='?')
 	args = parser.parse_args()
-	
+
 	# If they didn't give a filename, then just prompt them. (They probably just double-clicked.)
 	while not args.file:
 		args.file = input('Enter a file name (e.g. playlists.txt): ')
 		args.format = args.file.split('.')[-1]
-	
+
 	# Log into the Spotify API.
 	if args.token:
 		spotify = SpotifyAPI(args.token)
 	else:
 		spotify = SpotifyAPI.authorize(client_id='5c098bcc800e45d49e476265bc9b6934',
 		                               scope='playlist-read-private playlist-read-collaborative user-library-read')
-	
+
 	# Get the ID of the logged in user.
 	logging.info('Loading user info...')
 	me = spotify.get('me')
@@ -177,7 +178,7 @@ def main():
 			logging.info('Loading playlist: {name} ({tracks[total]} songs)'.format(**playlist))
 			playlist['tracks'] = spotify.list(playlist['tracks']['href'], {'limit': 100})
 		playlists += playlist_data
-	
+
 	# Write the file.
 	logging.info('Writing files...')
 	with open(args.file, 'w', encoding='utf-8') as f:
@@ -187,7 +188,7 @@ def main():
 				'playlists': playlists,
 				'albums': liked_albums
 			}, f)
-		
+
 		# Tab-separated file.
 		else:
 			f.write('Playlists: \r\n\r\n')
@@ -215,7 +216,7 @@ def main():
 
 					f.write(f'{name}\t{artists}\t-\t{uri}\t{release_date}\r\n')
 
-	logging.info('Wrote file: ' + args.file)
+	logging.info(f'Wrote file: {args.file}')
 
 if __name__ == '__main__':
 	main()
